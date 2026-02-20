@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini IDS Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛡️ Mini IDS <span class="status">LIVE</span></h1>
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>Total Alerts</h3>
+                    <p id="total-alerts">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Port Scans</h3>
+                    <p id="port-scans">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>SYN Floods</h3>
+                    <p id="syn-floods">0</p>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <h2>Recent Activity</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Type</th>
+                            <th>Source IP</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody id="alerts-table">
+                        <!-- Alerts will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

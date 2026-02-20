@@ -1,0 +1,14 @@
+# Build artifacts
+build/
+
+# Node modules
+node_modules/
+
+# Logs (generated at runtime)
+logs/
+
+# OS files
+.DS_Store
+*.swp
+*.swo
+*~
