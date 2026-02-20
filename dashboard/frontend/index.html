@@ -25,6 +25,12 @@
                     <p id="syn-floods">0</p>
                 </div>
             </div>
+            <div class="settings-card">
+                <h3>Detection Sensitivity</h3>
+                <input type="range" id="threshold-slider" min="5" max="100" value="20">
+                <p>Threshold: <span id="threshold-val">20</span> ports</p>
+                <button onclick="updateThreshold()">Apply Settings</button>
+            </div>
         </header>
 
         <main>

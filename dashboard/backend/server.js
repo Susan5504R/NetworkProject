@@ -5,6 +5,18 @@ const app = express();
 const path = require('path');
 
 app.use(cors());
+app.use(express.json());
+
+// Config path for dynamic settings (read by C++ IDS)
+const configPath = path.join(__dirname, '../../config.json');
+
+app.post('/api/settings', (req, res) => {
+    const newConfig = JSON.stringify(req.body);
+    fs.writeFile(configPath, newConfig, (err) => {
+        if (err) return res.status(500).json({ error: "Failed to save config" });
+        res.json({ message: "Config updated" });
+    });
+});
 
 // Path to the logs directory, relative to where server.js is run (dashboard/backend/)
 // Assuming logs/alerts.json is at ../../logs/alerts.json from here?

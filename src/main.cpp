@@ -33,7 +33,7 @@ std::map<std::string, Tracker> syn_flood_map;
 std::map<std::string, Tracker> syn_flood_dst_map;  // Tracks SYN floods by destination (for spoofed sources)
 
 // Configure thresholds
-const int PORT_SCAN_THRESHOLD = 50; 
+int CURRENT_THRESHOLD = 20; // Dynamic, loaded from config.json
 const int SYN_FLOOD_THRESHOLD = 100;    // Per-source: many SYNs from one IP
 const int SYN_FLOOD_DST_THRESHOLD = 50; // Per-destination: many SYNs to one IP:port (catches --rand-source)
 const int TIME_WINDOW_SEC = 5; // seconds
@@ -62,7 +62,22 @@ void log_alert(const std::string& type, const std::string& src_ip, const std::st
     }
 }
 
+void load_config() {
+    std::ifstream config_file("config.json");
+    if (config_file.is_open()) {
+        std::string line;
+        while (std::getline(config_file, line)) {
+            // Simple parsing for {"threshold": X}
+            size_t pos = line.find("threshold\":");
+            if (pos != std::string::npos) {
+                CURRENT_THRESHOLD = std::stoi(line.substr(pos + 11));
+            }
+        }
+    }
+}
+
 void check_port_scan(const std::string& src_ip, int dest_port) {
+    load_config(); // Reload settings before checking
     // Skip whitelisted ports
     if (whitelisted_ports.count(dest_port)) return;
 
@@ -81,7 +96,7 @@ void check_port_scan(const std::string& src_ip, int dest_port) {
         tracker.ports.insert(dest_port);
 
         // Only alert the FIRST time the threshold is crossed in this window
-        if (!tracker.alerted && tracker.ports.size() > PORT_SCAN_THRESHOLD) {
+        if (!tracker.alerted && tracker.ports.size() > static_cast<size_t>(CURRENT_THRESHOLD)) {
             std::string msg = "Unique Ports: " + std::to_string(tracker.ports.size()) + 
                               " in " + std::to_string(TIME_WINDOW_SEC) + "s";
             std::cerr << "[ALERT] Potential Port Scan detected from: " << src_ip 

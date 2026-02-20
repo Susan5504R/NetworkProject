@@ -53,3 +53,22 @@ fetchAlerts();
 
 // Poll every 2 seconds
 setInterval(fetchAlerts, 2000);
+
+// --- Sensitivity Slider ---
+async function updateThreshold() {
+    const val = document.getElementById('threshold-slider').value;
+    try {
+        await fetch('http://localhost:3000/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ threshold: parseInt(val) })
+        });
+        document.getElementById('threshold-val').textContent = val;
+        alert("Threshold updated!");
+    } catch (e) { console.error("Update failed", e); }
+}
+
+// Update the number display as you slide
+document.getElementById('threshold-slider').oninput = function () {
+    document.getElementById('threshold-val').textContent = this.value;
+};
