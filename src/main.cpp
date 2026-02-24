@@ -3,6 +3,7 @@
 #include <cstdlib>
 
 #include <netinet/if_ether.h> // Ethernet
+#include <net/if_arp.h>       // ARP
 #include <netinet/ip.h>       // IP
 #include <netinet/tcp.h>      // TCP
 #include <netinet/udp.h>      // UDP
@@ -12,6 +13,7 @@
 #include <set>
 #include <string>
 #include <fstream>
+#include <cstring>
 #include <ctime>
 #include <sstream>
 #include <vector>
@@ -29,6 +31,9 @@ struct PortTracker {
 };
 
 std::map<std::string, PortTracker> port_scan_map;
+
+// ARP Spoofing Detection — maps IP addresses to their known MAC addresses
+std::map<std::string, std::string> arp_table;
 
 //Stateful SYN Flood Detection
 //tracks pending or half open connections
@@ -118,6 +123,27 @@ void check_port_scan(const std::string& src_ip, int dest_port) {
     }
 }
 
+// --- ARP Spoofing Detection ---
+void check_arp_spoof(const std::string& ip, const std::string& mac) {
+    // Ignore broadcast, zero, and multicast addresses
+    if (ip == "0.0.0.0" || ip.rfind("224.", 0) == 0 || ip == "255.255.255.255") return;
+
+    if (arp_table.count(ip)) {
+        if (arp_table[ip] != mac) {
+            // The MAC for this IP changed — likely ARP spoofing
+            std::string details = "MAC changed! Old: [" + arp_table[ip] + "] New: [" + mac + "]";
+            std::cerr << "[ALERT] ARP Spoofing Detected for IP: " << ip << std::endl;
+            std::cerr << "        " << details << std::endl;
+            log_alert("ARP Spoofing", ip, details);
+        }
+    } else {
+        std::cout << "[ARP] Learned " << ip << " -> " << mac << std::endl;
+    }
+
+    // Always update with the latest mapping
+    arp_table[ip] = mac;
+}
+
 //Stateful SYN Flood Functions
 
 // Step 2 when a SYN is seen record the pending connection
@@ -194,8 +220,32 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
         return;
     }
 
+    // --- ARP Detection (Ethernet only) ---
+    if (ether_type == ETHERTYPE_ARP && linktype == DLT_EN10MB) {
+        struct ether_arp *arp_packet = (struct ether_arp *)(packet + link_header_len);
+
+        // Process ARP Replies and Requests
+        uint16_t arp_opcode = ntohs(arp_packet->ea_hdr.ar_op);
+        if (arp_opcode == ARPOP_REPLY || arp_opcode == ARPOP_REQUEST) {
+            // Extract sender IP
+            struct in_addr sender_ip;
+            memcpy(&sender_ip, arp_packet->arp_spa, sizeof(sender_ip));
+            std::string ip_str = inet_ntoa(sender_ip);
+
+            // Extract sender MAC
+            char mac_buf[18];
+            snprintf(mac_buf, sizeof(mac_buf), "%02x:%02x:%02x:%02x:%02x:%02x",
+                     arp_packet->arp_sha[0], arp_packet->arp_sha[1], arp_packet->arp_sha[2],
+                     arp_packet->arp_sha[3], arp_packet->arp_sha[4], arp_packet->arp_sha[5]);
+            std::string mac_str(mac_buf);
+
+            check_arp_spoof(ip_str, mac_str);
+        }
+        return; // ARP is not IP, nothing more to do
+    }
+
     if (ether_type != ETHERTYPE_IP) {
-        // not an IP packet so skip
+        // not an IP or ARP packet so skip
         return;
     }
 

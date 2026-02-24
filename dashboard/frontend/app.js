@@ -19,10 +19,12 @@ function updateStats(alerts) {
     const totalAlerts = alerts.length;
     const portScans = alerts.filter(a => a.type === 'Port Scan').length;
     const synFloods = alerts.filter(a => a.type === 'SYN Flood').length;
+    const arpSpoofs = alerts.filter(a => a.type === 'ARP Spoofing').length;
 
     document.getElementById('total-alerts').textContent = totalAlerts;
     document.getElementById('port-scans').textContent = portScans;
     document.getElementById('syn-floods').textContent = synFloods;
+    document.getElementById('arp-spoofs').textContent = arpSpoofs;
 }
 
 function renderTable(alerts) {
@@ -35,7 +37,9 @@ function renderTable(alerts) {
     reversedAlerts.forEach(alert => {
         const row = document.createElement('tr');
 
-        const typeClass = alert.type === 'Port Scan' ? 'type-port-scan' : 'type-syn-flood';
+        let typeClass = 'type-syn-flood';
+        if (alert.type === 'Port Scan') typeClass = 'type-port-scan';
+        else if (alert.type === 'ARP Spoofing') typeClass = 'type-arp-spoof';
 
         row.innerHTML = `
             <td>${alert.timestamp}</td>

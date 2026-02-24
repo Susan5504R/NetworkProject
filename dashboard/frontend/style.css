@@ -193,6 +193,12 @@ tr:last-child td {
     border: 1px solid var(--accent-red);
 }
 
+.type-arp-spoof {
+    background-color: rgba(227, 155, 35, 0.2);
+    color: #e39b23;
+    border: 1px solid #e39b23;
+}
+
 /* Scrollbar for webkit */
 ::-webkit-scrollbar {
     width: 8px;
