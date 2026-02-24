@@ -225,3 +225,13 @@ No completion > threshold
 🔥 4. Abnormal Session Duration
 
 Connections lasting too long or too short.
+
+🚀 Scope for Improvements
+While the current project is excellent, here are three ways to take it to a "senior student" level:
+
+Multithreading: Currently, pcap_loop is single-threaded. Under a heavy DDoS attack, the processing might lag. Moving the packet_handler logic to a thread pool would improve performance.
+
+Encryption Handling: Most modern traffic is HTTPS. Your DPI can only read HTTP. You could look into "SNI (Server Name Indication) Parsing" to at least see which domains are being visited, even if the data is encrypted.
+
+Dynamic Blocking (IPS): Turn your IDS into an IPS (Intrusion Prevention System). When an alert is triggered, your C++ engine could automatically execute a system command to block the attacker's IP:
+system("sudo iptables -A INPUT -s " + src_ip + " -j DROP");

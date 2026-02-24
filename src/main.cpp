@@ -206,6 +206,25 @@ void check_stale_connections() {
     }
 }
 
+// Payload Inspection (Layer 5 - Deep Packet Inspection)
+void check_payload_signatures(const std::string& src_ip, const std::string& data) {
+    // SQL Injection signatures
+    std::vector<std::string> sql_patterns = {"' OR 1=1", "UNION SELECT", "DROP TABLE", "--"};
+    for (const auto& pattern : sql_patterns) {
+        if (data.find(pattern) != std::string::npos) {
+            std::string msg = "Found pattern: " + pattern;
+            std::cerr << "[ALERT] SQL Injection Attempt from " << src_ip << " (" << msg << ")" << std::endl;
+            log_alert("SQL Injection Attempt", src_ip, msg);
+        }
+    }
+
+    // XSS (Cross-Site Scripting) signatures
+    if (data.find("<script>") != std::string::npos || data.find("alert(") != std::string::npos) {
+        std::string msg = "Detected script injection attempt";
+        std::cerr << "[ALERT] XSS Attack from " << src_ip << " (" << msg << ")" << std::endl;
+        log_alert("XSS Attack", src_ip, msg);
+    }
+}
 
 void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char *packet) {
     // determine link layer header size based on datalink type
@@ -229,8 +248,8 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
         return;
     }
 
-    //ARP Detection (Ethernet only)
-    if (ether_type == ETHERTYPE_ARP && linktype == DLT_EN10MB) {
+    //ARP Detection (works on both Ethernet and Linux cooked capture)
+    if (ether_type == ETHERTYPE_ARP) {
         struct ether_arp *arp_packet = (struct ether_arp *)(packet + link_header_len);
 
         // Process ARP Replies and Requests
@@ -326,6 +345,16 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 
         // Check for stale half open connections
         check_stale_connections();
+
+        // Payload Inspection (DPI)
+        int tcp_header_len = tcp_header->doff * 4;
+        const u_char *payload = packet + link_header_len + ip_header_len + tcp_header_len;
+        int payload_len = header->len - (link_header_len + ip_header_len + tcp_header_len);
+
+        if (payload_len > 0) {
+            std::string data(reinterpret_cast<const char*>(payload), payload_len);
+            check_payload_signatures(src_ip_str, data);
+        }
 
     } else if (ip_header->ip_p == IPPROTO_ICMP) {
         const u_char *icmp_header_start = ip_header_start + ip_header_len;
