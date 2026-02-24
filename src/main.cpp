@@ -6,6 +6,7 @@
 #include <net/if_arp.h>       // ARP
 #include <netinet/ip.h>       // IP
 #include <netinet/tcp.h>      // TCP
+#include <netinet/ip_icmp.h>  // ICMP
 #include <netinet/udp.h>      // UDP
 #include <arpa/inet.h>        // inet_ntoa
 #include <pcap/sll.h>         // Linux cooked capture (SLL)
@@ -31,6 +32,14 @@ struct PortTracker {
 };
 
 std::map<std::string, PortTracker> port_scan_map;
+
+struct ICMPTracker {
+    int count;
+    time_t last_reset;
+};
+
+std::map<std::string, ICMPTracker> icmp_flood_map;
+const int ICMP_THRESHOLD = 50;
 
 // ARP Spoofing Detection — maps IP addresses to their known MAC addresses
 std::map<std::string, std::string> arp_table;
@@ -266,12 +275,9 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
     std::string src_ip_str(inet_ntoa(ip_header->ip_src));
     std::string dst_ip_str(inet_ntoa(ip_header->ip_dst));
 
-    // filter out local/loopback traffic to reduce false positives
-    if (src_ip_str == "127.0.0.1" || src_ip_str == "0.0.0.0") {
-        return; // Ignore internal system chatter
-    }
-
     if (ip_header->ip_p == IPPROTO_TCP) {
+        // filter out local/loopback traffic to reduce false positives in TCP
+        if (src_ip_str == "127.0.0.1" || src_ip_str == "0.0.0.0") return;
         // TCP Header follows IP Header
         const u_char *tcp_header_start = ip_header_start + ip_header_len;
         struct tcphdr *tcp_header = (struct tcphdr *) tcp_header_start;
@@ -318,11 +324,34 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
             track_ack(src_ip_str, src_port, dst_ip_str, dst_port);
         }
 
-        // Check for stale half-open connections
+        // Check for stale half open connections
         check_stale_connections();
 
+    } else if (ip_header->ip_p == IPPROTO_ICMP) {
+        const u_char *icmp_header_start = ip_header_start + ip_header_len;
+        struct icmphdr *icmp_header = (struct icmphdr *) icmp_header_start;
+
+        if (icmp_header->type == ICMP_ECHO) {
+            time_t now = time(0);
+            ICMPTracker& tracker = icmp_flood_map[src_ip_str];
+
+            if (difftime(now, tracker.last_reset) >= 1.0) {
+                tracker.count = 0;
+                tracker.last_reset = now;
+            }
+
+            tracker.count++;
+
+            if (tracker.count > ICMP_THRESHOLD) {
+                std::string msg = "ICMP Flood: " + std::to_string(tracker.count) + " pings/sec";
+
+                if (tracker.count == ICMP_THRESHOLD + 1) {
+                    log_alert("ICMP Flood", src_ip_str, msg);
+                    std::cerr << "[ALERT] " << msg << " from " << src_ip_str << std::endl;
+                }
+            }
+        }
     } else if (ip_header->ip_p == IPPROTO_UDP) {
-        // UDP Header follows IP Header
         const u_char *udp_header_start = ip_header_start + ip_header_len;
         struct udphdr *udp_header = (struct udphdr *) udp_header_start;
 
@@ -330,8 +359,6 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
         std::cout << "Src Port: " << ntohs(udp_header->source) 
                   << " -> Dst Port: " << ntohs(udp_header->dest) << std::endl;
     }
-
-    // Print a separator
     std::cout << "--------------------------------------" << std::endl;
 }
 
