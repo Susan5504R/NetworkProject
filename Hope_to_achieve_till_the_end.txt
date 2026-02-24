@@ -1,0 +1,227 @@
+IDS/
+ ├── packet_capture.cpp
+ ├── ethernet_parser.cpp
+ ├── ip_parser.cpp
+ ├── tcp_parser.cpp
+ ├── rule_engine.cpp
+ ├── alert_system.cpp
+ └── main.cpp
+
+ 🧱 Layer-Based Detection Map
+Ethernet → IP → TCP/UDP → Payload
+
+Each layer gives different attack visibility.
+
+🔵 1️⃣ Ethernet Layer Detections (L2)
+
+Limited but useful in LAN environments.
+
+✅ ARP Spoofing
+
+Detect:
+
+Same IP mapped to multiple MACs
+
+Logic:
+
+if (arp_table[ip] != mac)
+    alert("ARP Spoofing")
+✅ MAC Flooding
+
+Too many different MACs from same switch port.
+
+🟢 2️⃣ IP Layer Detections (L3)
+
+Using IP header:
+
+struct ip* iphdr;
+🔥 A. IP Spoofing Detection
+
+Suspicious if:
+
+Private IP coming from external network
+
+Loopback address from network
+
+Example:
+
+127.0.0.1 from external interface
+🔥 B. TTL Anomaly Detection
+
+Normal TTL:
+
+Linux ~64
+
+Windows ~128
+
+If sudden TTL changes:
+→ Possible spoofing.
+
+🔥 C. IP Fragmentation Attack
+
+Attackers fragment malicious payload.
+
+Detect:
+
+Too many fragments
+
+Overlapping fragments
+
+🔥 D. ICMP Flood
+
+If:
+
+Too many ICMP packets per second
+
+→ Possible ping flood.
+
+🔴 3️⃣ TCP Layer Detections (MOST IMPORTANT)
+
+Yes — TCP is where major detections happen.
+
+Because attackers manipulate connection logic.
+
+🚨 1. SYN Flood
+
+Many:
+
+SYN
+
+No:
+
+ACK
+
+→ Denial of Service
+
+🚨 2. Port Scanning
+
+Same source IP → many destination ports.
+
+🚨 3. FIN Scan (Stealth Scan)
+
+Only FIN flag set.
+
+🚨 4. NULL Scan
+
+No flags set.
+
+🚨 5. Xmas Scan
+
+Flags:
+
+FIN + PSH + URG
+🚨 6. RST Flood
+
+Too many RST packets.
+
+🚨 7. SYN + FIN (Illegal)
+
+Impossible in valid TCP.
+
+🚨 8. ACK Scan
+
+ACK without handshake.
+
+🚨 9. TCP Session Hijacking
+
+Sequence numbers not matching expected values.
+
+🚨 10. TCP Replay Attack
+
+Duplicate sequence numbers repeatedly.
+
+🚨 11. Zero Window Attack
+
+Window size repeatedly 0.
+
+🚨 12. Abnormal Flag Combinations
+
+Examples:
+
+SYN + RST
+
+FIN + SYN
+
+No flags
+
+🚨 13. Half-Open Connection Attack
+
+SYN received
+Handshake never completed
+Connection stuck in SYN_RECEIVED
+
+🚨 14. TCP State Violation
+
+Example:
+
+Data packet before handshake
+
+FIN before ESTABLISHED
+
+ACK without connection
+
+This requires:
+State tracking table.
+
+🟣 4️⃣ UDP Layer Detections
+
+If you parse UDP:
+
+🚨 UDP Flood
+
+High packet rate.
+
+🚨 DNS Amplification
+
+Large DNS response → small request ratio.
+
+🟡 5️⃣ Payload-Level Detections (Advanced)
+
+If you inspect packet data:
+
+🚨 SQL Injection patterns
+
+Look for:
+
+' OR 1=1
+🚨 XSS patterns
+<script>
+🚨 Malware signature detection
+
+Match byte patterns.
+
+This becomes:
+Signature-based IDS.
+
+🧠 Advanced Behavioral Detections
+
+These make your IDS strong.
+
+🔥 1. Time-Based Rate Detection
+
+If:
+
+100 SYN packets in 1 second
+
+→ Alert.
+
+🔥 2. Connection Per IP Threshold
+
+If:
+
+>100 active connections from same IP
+
+→ Possible bot.
+
+🔥 3. Failed Handshake Ratio
+
+If:
+
+SYN sent
+No completion > threshold
+
+→ SYN flood.
+
+🔥 4. Abnormal Session Duration
+
+Connections lasting too long or too short.

@@ -1,11 +1,13 @@
 # Build artifacts
 build/
+mini_ids
 
 # Node modules
 node_modules/
 
 # Logs (generated at runtime)
 logs/
+*.gz
 
 # OS files
 .DS_Store

@@ -1,14 +1,14 @@
-const API_URL = 'http://localhost:3000/api/alerts';
+const API_URL = '/api/alerts';
 
 async function fetchAlerts() {
     try {
         const response = await fetch(API_URL);
         const alerts = await response.json();
 
-        // Update stats
+        //update stats
         updateStats(alerts);
 
-        // Update table
+        //update table
         renderTable(alerts);
     } catch (error) {
         console.error('Error fetching alerts:', error);
@@ -29,7 +29,7 @@ function renderTable(alerts) {
     const tbody = document.getElementById('alerts-table');
     tbody.innerHTML = '';
 
-    // Show latest alerts first
+    //reverse because latest first then older ones
     const reversedAlerts = [...alerts].reverse();
 
     reversedAlerts.forEach(alert => {
@@ -48,17 +48,17 @@ function renderTable(alerts) {
     });
 }
 
-// Initial fetch
+//initial fetch this is required you forgot it
 fetchAlerts();
 
-// Poll every 2 seconds
+//polling evdry 2 secs
 setInterval(fetchAlerts, 2000);
 
-// --- Sensitivity Slider ---
+//slider 
 async function updateThreshold() {
     const val = document.getElementById('threshold-slider').value;
     try {
-        await fetch('http://localhost:3000/api/settings', {
+        await fetch('/api/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ threshold: parseInt(val) })

@@ -7,6 +7,9 @@ const path = require('path');
 app.use(cors());
 app.use(express.json());
 
+// Serve the frontend dashboard as static files
+app.use(express.static(path.join(__dirname, '../frontend')));
+
 // Config path for dynamic settings (read by C++ IDS)
 const configPath = path.join(__dirname, '../../config.json');
 
@@ -19,13 +22,7 @@ app.post('/api/settings', (req, res) => {
 });
 
 // Path to the logs directory, relative to where server.js is run (dashboard/backend/)
-// Assuming logs/alerts.json is at ../../logs/alerts.json from here?
-// NO, user said "const logPath = '../logs/alerts.json'; // Adjust path based on your folder structure"
-// My structure:
-// Project/
-//   logs/alerts.json
-//   dashboard/backend/server.js
-// So logPath should be '../../logs/alerts.json'
+
 
 const logPath = path.join(__dirname, '../../logs/alerts.json');
 
@@ -63,5 +60,10 @@ app.get('/api/alerts', (req, res) => {
     });
 });
 
-const PORT = 3000;
-app.listen(PORT, () => console.log(`IDS API running on port ${PORT}`));
+// Health check endpoint for PM2 / monitoring
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime() });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`IDS Dashboard running at http://localhost:${PORT}`));

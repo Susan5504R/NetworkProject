@@ -2,7 +2,6 @@
 #include <iostream>
 #include <cstdlib>
 
-// Headers for protocol definitions
 #include <netinet/if_ether.h> // Ethernet
 #include <netinet/ip.h>       // IP
 #include <netinet/tcp.h>      // TCP
@@ -15,8 +14,9 @@
 #include <fstream>
 #include <ctime>
 #include <sstream>
+#include <vector>
 
-// --- Detection Engine Globals ---
+// global vars
 struct Tracker {
     int count;
     time_t start_time;
@@ -29,16 +29,20 @@ struct PortTracker {
 };
 
 std::map<std::string, PortTracker> port_scan_map;
-std::map<std::string, Tracker> syn_flood_map;
-std::map<std::string, Tracker> syn_flood_dst_map;  // Tracks SYN floods by destination (for spoofed sources)
 
-// Configure thresholds
-int CURRENT_THRESHOLD = 20; // Dynamic, loaded from config.json
-const int SYN_FLOOD_THRESHOLD = 100;    // Per-source: many SYNs from one IP
-const int SYN_FLOOD_DST_THRESHOLD = 50; // Per-destination: many SYNs to one IP:port (catches --rand-source)
-const int TIME_WINDOW_SEC = 5; // seconds
+//Stateful SYN Flood Detection
+//tracks pending or half open connections
+//SYN sent but no ACK received
+//key: "SrcIP:SrcPort->DstIP:DstPort", Value: timestamp of the SYN
+std::map<std::string, time_t> pending_connections;
 
-// Whitelisted ports — legitimate services to ignore in port scan detection
+//configured thresholds
+int CURRENT_THRESHOLD = 20; //dynamic, loaded from config.json
+const int STALE_SYN_THRESHOLD = 20;     // nmber of stale half-open connections to trigger alert
+const int STALE_TIMEOUT_SEC = 10;       // secs before a pending SYN is considered stale
+const int TIME_WINDOW_SEC = 5; // secs
+
+// witelisted ports legitimate services to ignore in port scan detection
 const std::set<int> whitelisted_ports = {80, 443, 53}; // HTTP, HTTPS, DNS
 
 // --- Helper Functions ---
@@ -67,7 +71,7 @@ void load_config() {
     if (config_file.is_open()) {
         std::string line;
         while (std::getline(config_file, line)) {
-            // Simple parsing for {"threshold": X}
+            // simple parsing for {"threshold": X}
             size_t pos = line.find("threshold\":");
             if (pos != std::string::npos) {
                 CURRENT_THRESHOLD = std::stoi(line.substr(pos + 11));
@@ -77,13 +81,13 @@ void load_config() {
 }
 
 void check_port_scan(const std::string& src_ip, int dest_port) {
-    load_config(); // Reload settings before checking
-    // Skip whitelisted ports
+    load_config(); // reload settings before checking
+    // skip whitelisted ports
     if (whitelisted_ports.count(dest_port)) return;
 
     time_t now = time(0);
 
-    // If IP is new, initialize it
+    // f IP is new, initialize it
     if (port_scan_map.find(src_ip) == port_scan_map.end()) {
         port_scan_map[src_ip] = { {dest_port}, now, false };
         return;
@@ -91,11 +95,11 @@ void check_port_scan(const std::string& src_ip, int dest_port) {
 
     PortTracker& tracker = port_scan_map[src_ip];
 
-    // If within the time window, keep accumulating ports
+    //if within the time window, keep accumulating ports
     if (difftime(now, tracker.start_time) <= TIME_WINDOW_SEC) {
         tracker.ports.insert(dest_port);
 
-        // Only alert the FIRST time the threshold is crossed in this window
+        //only alert the FIRST time the threshold is crossed in this window
         if (!tracker.alerted && tracker.ports.size() > static_cast<size_t>(CURRENT_THRESHOLD)) {
             std::string msg = "Unique Ports: " + std::to_string(tracker.ports.size()) + 
                               " in " + std::to_string(TIME_WINDOW_SEC) + "s";
@@ -103,10 +107,10 @@ void check_port_scan(const std::string& src_ip, int dest_port) {
                       << " (" << msg << ")" << std::endl;
             
             log_alert("Port Scan", src_ip, msg);
-            tracker.alerted = true;  // Suppress further alerts in this window
+            tracker.alerted = true;  //suppress further alerts in this window
         }
     } else {
-        // Time window has fully elapsed — reset everything
+        //time window has fully elapsed — reset everything
         tracker.ports.clear();
         tracker.ports.insert(dest_port);
         tracker.start_time = now;
@@ -114,105 +118,105 @@ void check_port_scan(const std::string& src_ip, int dest_port) {
     }
 }
 
-// Detect SYN flood from a single source IP (many SYNs from one IP)
-void check_syn_flood(const std::string& src_ip) {
-    time_t now = time(0);
+//Stateful SYN Flood Functions
 
-    if (syn_flood_map.find(src_ip) == syn_flood_map.end()) {
-        syn_flood_map[src_ip] = {1, now};
-        return;
-    }
-
-    if (difftime(now, syn_flood_map[src_ip].start_time) <= TIME_WINDOW_SEC) {
-        syn_flood_map[src_ip].count++;
-        
-        if (syn_flood_map[src_ip].count > SYN_FLOOD_THRESHOLD) {
-            std::string msg = "Packet Count: " + std::to_string(syn_flood_map[src_ip].count) + 
-                              " in " + std::to_string(TIME_WINDOW_SEC) + "s";
-            std::cerr << "[ALERT] Potential SYN Flood detected from: " << src_ip 
-                      << " (" << msg << ")" << std::endl;
-            
-            log_alert("SYN Flood", src_ip, msg);
-            syn_flood_map[src_ip] = {0, now}; 
-        }
-    } else {
-        syn_flood_map[src_ip] = {1, now};
-    }
+// Step 2 when a SYN is seen record the pending connection
+void track_syn(const std::string& src_ip, int src_port,
+               const std::string& dst_ip, int dst_port) {
+    std::string key = src_ip + ":" + std::to_string(src_port) + "->" +
+                      dst_ip + ":" + std::to_string(dst_port);
+    pending_connections[key] = time(0);
 }
 
-// Detect SYN flood targeting a destination IP:port (catches spoofed/random source IPs)
-void check_syn_flood_dst(const std::string& dst_ip, int dst_port, const std::string& src_ip) {
-    time_t now = time(0);
-    std::string key = dst_ip + ":" + std::to_string(dst_port);
+// Step 3 when a corresponding ACK completes the handshake remove it
+void track_ack(const std::string& src_ip, int src_port,
+               const std::string& dst_ip, int dst_port) {
+    // The ACK goes in the reverse direction of the original SYN
+    std::string key = dst_ip + ":" + std::to_string(dst_port) + "->" +
+                      src_ip + ":" + std::to_string(src_port);
+    pending_connections.erase(key);
+}
 
-    if (syn_flood_dst_map.find(key) == syn_flood_dst_map.end()) {
-        syn_flood_dst_map[key] = {1, now};
-        return;
+// Step 4 check for stale half open connections meaning older than STALE_TIMEOUT_SEC
+void check_stale_connections() {
+    time_t now = time(0);
+
+    // count stale connections per source IP
+    std::map<std::string, int> stale_counts;
+    std::vector<std::string> to_remove;
+
+    for (auto& entry : pending_connections) {
+        if (difftime(now, entry.second) > STALE_TIMEOUT_SEC) {
+            // extract source IP from key "SrcIP:SrcPort->DstIP:DstPort"
+            std::string src_ip = entry.first.substr(0, entry.first.find(':'));
+            stale_counts[src_ip]++;
+            to_remove.push_back(entry.first);
+        }
     }
 
-    if (difftime(now, syn_flood_dst_map[key].start_time) <= TIME_WINDOW_SEC) {
-        syn_flood_dst_map[key].count++;
-        
-        if (syn_flood_dst_map[key].count > SYN_FLOOD_DST_THRESHOLD) {
-            std::string msg = "SYN Count: " + std::to_string(syn_flood_dst_map[key].count) + 
-                              " to " + key + " in " + std::to_string(TIME_WINDOW_SEC) + "s";
-            std::cerr << "[ALERT] Potential SYN Flood targeting: " << key 
+    // alert for IPs with many stale half-open connections
+    for (auto& pair : stale_counts) {
+        if (pair.second > STALE_SYN_THRESHOLD) {
+            std::string msg = "Half-open connections: " + std::to_string(pair.second) +
+                              " (stale > " + std::to_string(STALE_TIMEOUT_SEC) + "s)";
+            std::cerr << "[ALERT] Potential SYN Flood (stateful) from: " << pair.first
                       << " (" << msg << ")" << std::endl;
-            
-            log_alert("SYN Flood", dst_ip, msg);
-            syn_flood_dst_map[key] = {0, now}; 
+            log_alert("SYN Flood", pair.first, msg);
         }
-    } else {
-        syn_flood_dst_map[key] = {1, now};
+    }
+
+    // clean up stale entries
+    for (auto& key : to_remove) {
+        pending_connections.erase(key);
     }
 }
 
 
 void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char *packet) {
-    // Determine link-layer header size based on datalink type
+    // determine link layer header size based on datalink type
     pcap_t *handle = (pcap_t *)args;
     int linktype = pcap_datalink(handle);
     int link_header_len = 0;
     uint16_t ether_type = 0;
 
     if (linktype == DLT_EN10MB) {
-        // Standard Ethernet (14-byte header)
+        // standard ethernet 14-byte header
         link_header_len = 14;
         struct ether_header *eth_header = (struct ether_header *) packet;
         ether_type = ntohs(eth_header->ether_type);
     } else if (linktype == DLT_LINUX_SLL) {
-        // Linux cooked capture (16-byte header, used by "any" device)
+        // linux cooked capture (16-byte header, used by "any" device)
         link_header_len = 16;
         // Protocol type is at bytes 14-15 in SLL header
         ether_type = ntohs(*(uint16_t *)(packet + 14));
     } else {
-        // Unsupported link type, skip
+        // unsupported link type so skip
         return;
     }
 
     if (ether_type != ETHERTYPE_IP) {
-        // Not an IP packet, skip
+        // not an IP packet so skip
         return;
     }
 
     // 2. IP Header
     const u_char *ip_header_start = packet + link_header_len;
-    // We can use struct ip from <netinet/ip.h>
+    // we can use struct ip from <netinet/ip.h>
     struct ip *ip_header = (struct ip *) ip_header_start;
 
     std::cout << "Captured Packet Length: " << header->len << std::endl;
     std::cout << "Source IP: " << inet_ntoa(ip_header->ip_src) 
               << " -> Dest IP: " << inet_ntoa(ip_header->ip_dst) << std::endl;
 
-    // 3. Protocol (TCP/UDP)
+    // 3. protocol (TCP/UDP)
     // IP header length is in 32-bit words, so multiply by 4 to get bytes
     int ip_header_len = ip_header->ip_hl * 4;
     
-    // Safely copy IP strings
+    // safely copy IP strings
     std::string src_ip_str(inet_ntoa(ip_header->ip_src));
     std::string dst_ip_str(inet_ntoa(ip_header->ip_dst));
 
-    // Filter out local/loopback traffic to reduce false positives
+    // filter out local/loopback traffic to reduce false positives
     if (src_ip_str == "127.0.0.1" || src_ip_str == "0.0.0.0") {
         return; // Ignore internal system chatter
     }
@@ -237,16 +241,22 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
         if (tcp_header->urg) std::cout << "URG ";
         std::cout << std::endl;
 
-        // --- Detection Logic ---
+        //Detection Logic
         
         // 1. Port Scan Detection (track unique destination ports for source IP)
         check_port_scan(src_ip_str, dst_port);
 
-        // 2. SYN Flood Detection (SYN set, ACK not set)
+        // 2. Stateful SYN Flood Detection
         if (tcp_header->syn && !tcp_header->ack) {
-            check_syn_flood(src_ip_str);                        // Per-source detection
-            check_syn_flood_dst(dst_ip_str, dst_port, src_ip_str); // Per-destination detection
+            // Pure SYN — record as pending half-open connection
+            track_syn(src_ip_str, src_port, dst_ip_str, dst_port);
+        } else if (tcp_header->ack) {
+            // ACK — connection completed, remove from pending
+            track_ack(src_ip_str, src_port, dst_ip_str, dst_port);
         }
+
+        // Periodically check for stale half-open connections
+        check_stale_connections();
 
     } else if (ip_header->ip_p == IPPROTO_UDP) {
         // UDP Header follows IP Header
@@ -266,7 +276,7 @@ int main() {
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t *handle;
     
-    // Step 1: Find a device
+    // Step 1: find a device
     pcap_if_t *alldevs;
     if (pcap_findalldevs(&alldevs, errbuf) == -1) {
         std::cerr << "Error finding devices: " << errbuf << std::endl;
