@@ -50,7 +50,7 @@ const int TIME_WINDOW_SEC = 5; // secs
 // witelisted ports legitimate services to ignore in port scan detection
 const std::set<int> whitelisted_ports = {80, 443, 53}; // HTTP, HTTPS, DNS
 
-// --- Helper Functions ---
+// Helper Functions 
 std::string get_current_timestamp() {
     time_t now = time(0);
     struct tm tstruct;
@@ -123,7 +123,7 @@ void check_port_scan(const std::string& src_ip, int dest_port) {
     }
 }
 
-// --- ARP Spoofing Detection ---
+//ARP Spoofing Detection
 void check_arp_spoof(const std::string& ip, const std::string& mac) {
     // Ignore broadcast, zero, and multicast addresses
     if (ip == "0.0.0.0" || ip.rfind("224.", 0) == 0 || ip == "255.255.255.255") return;
@@ -220,7 +220,7 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
         return;
     }
 
-    // --- ARP Detection (Ethernet only) ---
+    //ARP Detection (Ethernet only)
     if (ether_type == ETHERTYPE_ARP && linktype == DLT_EN10MB) {
         struct ether_arp *arp_packet = (struct ether_arp *)(packet + link_header_len);
 
@@ -291,21 +291,34 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
         if (tcp_header->urg) std::cout << "URG ";
         std::cout << std::endl;
 
-        //Detection Logic
-        
-        // 1. Port Scan Detection (track unique destination ports for source IP)
+        // Illegal TCP Flag Combination Detection
+        uint8_t flags = tcp_header->th_flags;
+
+        if (flags == 0) {
+            std::string msg = "TCP Null Scan: No flags set";
+            std::cerr << "[ALERT] " << msg << " from " << src_ip_str << std::endl;
+            log_alert("Null Scan", src_ip_str, msg);
+        } else if ((flags & (TH_FIN | TH_PUSH | TH_URG)) == (TH_FIN | TH_PUSH | TH_URG)) {
+            std::string msg = "TCP Xmas Scan: FIN+PSH+URG detected";
+            std::cerr << "[ALERT] " << msg << " from " << src_ip_str << std::endl;
+            log_alert("Xmas Scan", src_ip_str, msg);
+        } else if ((flags & TH_SYN) && (flags & TH_FIN)) {
+            std::string msg = "Illegal Flag Combo: SYN and FIN set";
+            std::cerr << "[ALERT] " << msg << " from " << src_ip_str << std::endl;
+            log_alert("Protocol Violation", src_ip_str, msg);
+        }
+
+        // Port Scan Detection
         check_port_scan(src_ip_str, dst_port);
 
-        // 2. Stateful SYN Flood Detection
+        // Stateful SYN Flood Detection
         if (tcp_header->syn && !tcp_header->ack) {
-            // Pure SYN — record as pending half-open connection
             track_syn(src_ip_str, src_port, dst_ip_str, dst_port);
         } else if (tcp_header->ack) {
-            // ACK — connection completed, remove from pending
             track_ack(src_ip_str, src_port, dst_ip_str, dst_port);
         }
 
-        // Periodically check for stale half-open connections
+        // Check for stale half-open connections
         check_stale_connections();
 
     } else if (ip_header->ip_p == IPPROTO_UDP) {
@@ -349,7 +362,7 @@ int main() {
 
     std::cout << "Link-layer type: " << pcap_datalink(handle) << std::endl;
 
-    // Step 3: Capture packets — pass handle as args for link-layer detection
+    // Step 3: Capture packets pass handle as args for link layer detection
     std::cout << "Starting packet capture..." << std::endl;
     pcap_loop(handle, 0, packet_handler, (u_char *)handle);
 

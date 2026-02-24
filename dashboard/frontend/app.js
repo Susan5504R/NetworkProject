@@ -20,11 +20,15 @@ function updateStats(alerts) {
     const portScans = alerts.filter(a => a.type === 'Port Scan').length;
     const synFloods = alerts.filter(a => a.type === 'SYN Flood').length;
     const arpSpoofs = alerts.filter(a => a.type === 'ARP Spoofing').length;
+    const scanViolations = alerts.filter(a =>
+        a.type === 'Null Scan' || a.type === 'Xmas Scan' || a.type === 'Protocol Violation'
+    ).length;
 
     document.getElementById('total-alerts').textContent = totalAlerts;
     document.getElementById('port-scans').textContent = portScans;
     document.getElementById('syn-floods').textContent = synFloods;
     document.getElementById('arp-spoofs').textContent = arpSpoofs;
+    document.getElementById('scan-violations').textContent = scanViolations;
 }
 
 function renderTable(alerts) {
@@ -37,9 +41,15 @@ function renderTable(alerts) {
     reversedAlerts.forEach(alert => {
         const row = document.createElement('tr');
 
-        let typeClass = 'type-syn-flood';
-        if (alert.type === 'Port Scan') typeClass = 'type-port-scan';
-        else if (alert.type === 'ARP Spoofing') typeClass = 'type-arp-spoof';
+        const typeMap = {
+            'Port Scan': 'type-port-scan',
+            'SYN Flood': 'type-syn-flood',
+            'ARP Spoofing': 'type-arp-spoof',
+            'Null Scan': 'type-scan-violation',
+            'Xmas Scan': 'type-scan-violation',
+            'Protocol Violation': 'type-scan-violation'
+        };
+        const typeClass = typeMap[alert.type] || 'type-syn-flood';
 
         row.innerHTML = `
             <td>${alert.timestamp}</td>

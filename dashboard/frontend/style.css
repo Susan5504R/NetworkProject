@@ -54,9 +54,17 @@ h1 {
 }
 
 @keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
+    0% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+
+    100% {
+        opacity: 1;
+    }
 }
 
 .stats {
@@ -155,7 +163,8 @@ table {
     border-collapse: collapse;
 }
 
-th, td {
+th,
+td {
     padding: 15px;
     text-align: left;
     border-bottom: 1px solid var(--border-color);
@@ -197,6 +206,12 @@ tr:last-child td {
     background-color: rgba(227, 155, 35, 0.2);
     color: #e39b23;
     border: 1px solid #e39b23;
+}
+
+.type-scan-violation {
+    background-color: rgba(163, 113, 247, 0.2);
+    color: #a371f7;
+    border: 1px solid #a371f7;
 }
 
 /* Scrollbar for webkit */
