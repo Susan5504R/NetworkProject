@@ -1,4 +1,4 @@
-const API_URL = '/api/alerts';
+const API_URL = 'http://localhost:3000/api/alerts';
 
 async function fetchAlerts() {
     try {
@@ -72,7 +72,7 @@ setInterval(fetchAlerts, 2000);
 async function updateThreshold() {
     const val = document.getElementById('threshold-slider').value;
     try {
-        await fetch('/api/settings', {
+        await fetch('http://localhost:3000/api/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ threshold: parseInt(val) })

@@ -41,6 +41,9 @@ struct ICMPTracker {
 std::map<std::string, ICMPTracker> icmp_flood_map;
 const int ICMP_THRESHOLD = 50;
 
+// IPS — tracks IPs that have already been blocked via iptables
+std::set<std::string> blocked_ips;
+
 // ARP Spoofing Detection — maps IP addresses to their known MAC addresses
 std::map<std::string, std::string> arp_table;
 
@@ -77,6 +80,24 @@ void log_alert(const std::string& type, const std::string& src_ip, const std::st
                  << "\"src_ip\": \"" << src_ip << "\", "
                  << "\"details\": \"" << details << "\" }" << std::endl;
         log_file.close();
+    }
+}
+
+void block_ip(const std::string& src_ip) {
+    if (blocked_ips.find(src_ip) != blocked_ips.end()) {
+        return;
+    }
+
+    std::string command = "sudo iptables -A INPUT -s " + src_ip + " -j DROP";
+    int result = system(command.c_str());
+
+    if (result == 0) {
+        blocked_ips.insert(src_ip);
+        std::cerr << "[IPS ACTION] Successfully blocked IP: " << src_ip << std::endl;
+        log_alert("IPS BLOCK", src_ip, "IP has been dynamically blocked via iptables");
+    } else {
+        std::cerr << "[ERROR] Failed to block IP: " << src_ip
+                  << ". Ensure IDS has sudo rights." << std::endl;
     }
 }
 
@@ -121,6 +142,7 @@ void check_port_scan(const std::string& src_ip, int dest_port) {
                       << " (" << msg << ")" << std::endl;
             
             log_alert("Port Scan", src_ip, msg);
+            block_ip(src_ip);
             tracker.alerted = true;  //suppress further alerts in this window
         }
     } else {
@@ -197,6 +219,7 @@ void check_stale_connections() {
             std::cerr << "[ALERT] Potential SYN Flood (stateful) from: " << pair.first
                       << " (" << msg << ")" << std::endl;
             log_alert("SYN Flood", pair.first, msg);
+            block_ip(pair.first);
         }
     }
 
@@ -215,6 +238,7 @@ void check_payload_signatures(const std::string& src_ip, const std::string& data
             std::string msg = "Found pattern: " + pattern;
             std::cerr << "[ALERT] SQL Injection Attempt from " << src_ip << " (" << msg << ")" << std::endl;
             log_alert("SQL Injection Attempt", src_ip, msg);
+            block_ip(src_ip);
         }
     }
 
@@ -223,6 +247,7 @@ void check_payload_signatures(const std::string& src_ip, const std::string& data
         std::string msg = "Detected script injection attempt";
         std::cerr << "[ALERT] XSS Attack from " << src_ip << " (" << msg << ")" << std::endl;
         log_alert("XSS Attack", src_ip, msg);
+        block_ip(src_ip);
     }
 }
 
@@ -323,14 +348,17 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
             std::string msg = "TCP Null Scan: No flags set";
             std::cerr << "[ALERT] " << msg << " from " << src_ip_str << std::endl;
             log_alert("Null Scan", src_ip_str, msg);
+            block_ip(src_ip_str);
         } else if ((flags & (TH_FIN | TH_PUSH | TH_URG)) == (TH_FIN | TH_PUSH | TH_URG)) {
             std::string msg = "TCP Xmas Scan: FIN+PSH+URG detected";
             std::cerr << "[ALERT] " << msg << " from " << src_ip_str << std::endl;
             log_alert("Xmas Scan", src_ip_str, msg);
+            block_ip(src_ip_str);
         } else if ((flags & TH_SYN) && (flags & TH_FIN)) {
             std::string msg = "Illegal Flag Combo: SYN and FIN set";
             std::cerr << "[ALERT] " << msg << " from " << src_ip_str << std::endl;
             log_alert("Protocol Violation", src_ip_str, msg);
+            block_ip(src_ip_str);
         }
 
         // Port Scan Detection
@@ -377,6 +405,7 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
                 if (tracker.count == ICMP_THRESHOLD + 1) {
                     log_alert("ICMP Flood", src_ip_str, msg);
                     std::cerr << "[ALERT] " << msg << " from " << src_ip_str << std::endl;
+                    block_ip(src_ip_str);
                 }
             }
         }

@@ -32,6 +32,18 @@ module.exports = {
             out_file: './logs/mini-ids-out.log',
             merge_logs: true,
             log_date_format: 'YYYY-MM-DD HH:mm:ss'
+        },
+        {
+            name: 'ids-frontend',
+            script: 'npx',
+            args: '-y http-server ./dashboard/frontend -p 12354',
+            cwd: './',
+            interpreter: 'none',
+            autorestart: true,
+            error_file: './logs/ids-frontend-error.log',
+            out_file: './logs/ids-frontend-out.log',
+            merge_logs: true,
+            log_date_format: 'YYYY-MM-DD HH:mm:ss'
         }
     ]
 };
