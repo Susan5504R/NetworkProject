@@ -1,6 +1,7 @@
 # Build artifacts
 build/
 mini_ids
+ids_engine
 
 # Node modules
 node_modules/

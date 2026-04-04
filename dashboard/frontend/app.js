@@ -65,7 +65,7 @@ function renderTable(alerts) {
 //initial fetch this is required you forgot it
 fetchAlerts();
 
-//polling evdry 2 secs
+//polling every 2 secs
 setInterval(fetchAlerts, 2000);
 
 //slider 

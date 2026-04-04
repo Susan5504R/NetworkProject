@@ -55,11 +55,11 @@ std::map<std::string, time_t> pending_connections;
 
 //configured thresholds
 int CURRENT_THRESHOLD = 20; //dynamic, loaded from config.json
-const int STALE_SYN_THRESHOLD = 20;     // nmber of stale half-open connections to trigger alert
+const int STALE_SYN_THRESHOLD = 20;     // number of stale half-open connections to trigger alert
 const int STALE_TIMEOUT_SEC = 10;       // secs before a pending SYN is considered stale
 const int TIME_WINDOW_SEC = 5; // secs
 
-// witelisted ports legitimate services to ignore in port scan detection
+// whitelisted ports — legitimate services to ignore in port scan detection
 const std::set<int> whitelisted_ports = {80, 443, 53}; // HTTP, HTTPS, DNS
 
 // Helper Functions 
@@ -122,7 +122,7 @@ void check_port_scan(const std::string& src_ip, int dest_port) {
 
     time_t now = time(0);
 
-    // f IP is new, initialize it
+    // if IP is new, initialize it
     if (port_scan_map.find(src_ip) == port_scan_map.end()) {
         port_scan_map[src_ip] = { {dest_port}, now, false };
         return;
@@ -320,8 +320,6 @@ void packet_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
     std::string dst_ip_str(inet_ntoa(ip_header->ip_dst));
 
     if (ip_header->ip_p == IPPROTO_TCP) {
-        // filter out local/loopback traffic to reduce false positives in TCP
-        if (src_ip_str == "127.0.0.1" || src_ip_str == "0.0.0.0") return;
         // TCP Header follows IP Header
         const u_char *tcp_header_start = ip_header_start + ip_header_len;
         struct tcphdr *tcp_header = (struct tcphdr *) tcp_header_start;

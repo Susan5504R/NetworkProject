@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  nids:
+    build: .
+    network_mode: "host"
+    privileged: true
+    # This keeps your 'logs' folder on your computer synced with the container
+    volumes:
+      - ./logs:/app/logs
+      - ./config.json:/app/config.json
